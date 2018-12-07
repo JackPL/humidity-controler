@@ -77,10 +77,11 @@ char* settings[]={
   "Brightness", "Contrast", "Humidity"
 };
 
-// array of settings that at the beginning is empty, but will be populated during settings
-// when settings will be changed the program will use this array to update EEPROM
-// EEPROM will be updated only after exit from settings menu
-// this will save a number of write/erase EEPROM cycles which are limited to 100 000
+// An array of settings. 
+// At the beginning the array is empty, but will be populated when user got into the SETTINGS MODE
+// When user will do any setting then the program will build this array in order to to update EEPROM
+// EEPROM will be updated only once, at the moment where user will leave the settings mode.
+// This method will save the number of write/erase EEPROM cycles which are limited to 100 000
 unsigned int eepromSettings[sizeof(settings)];
 
 
