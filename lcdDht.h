@@ -287,14 +287,9 @@ void chooseFromSettings() {
 	modeSettings = true;           // turn ON the settings mode
 	currentSetting = settings[0];  // give the first setting from array of settings to configure.
 	lcd.clear();
-	lcd.print(currentSetting);
 	
-	// TODO -> try to define it earlier in the code.
-	// define eepromSettings
-	//for (int i = 0; i<sizeof(settings); i++){
-	//	eepromSettings[i] = EEPROM.read(i);
-  //}
-			
+	// print settings and values
+	lcd.print(currentSetting);		
 	storedSettings = eepromSettings[0]; // read the first setting value
 	lcd.setCursor(0,1);
     lcd.print(storedSettings);			
