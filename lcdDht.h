@@ -118,7 +118,7 @@ void setup() {
   
   // contrast settings
   pinMode(contrast, OUTPUT); //Set pin 10 to OUTPUT
-  analogWrite(contrast, EEPROM.read(1)); // from 0 up to 255
+  analogWrite(contrast, eepromSettings[1]); // from 0 up to 255
   
 }
 
