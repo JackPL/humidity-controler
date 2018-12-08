@@ -72,17 +72,12 @@ unsigned long debounceTime = 50;           // milliseconds
 unsigned long buttonPressTime;             // when the switch last changed state
 String currentSetting = "";
 
-// array of settings
+// an array of settings names
 char* settings[]={
-  "Brightness", "Contrast", "Humidity"
+  "Brightness", "Contrast", "Humidity", "Default light"
 };
 
-
-// An array of settings. 
-// At the beginning the array is empty, but will be populated when user got into the SETTINGS MODE
-// When user will do any setting then the program will populate this array in order to to update EEPROM
-// EEPROM will be updated only once, at the moment where user will leave the settings mode.
-// This method will save the number of write/erase EEPROM cycles which are limited to 100 000
+// An array of settings saved in eeprom.
 unsigned int eepromSettings[sizeof(settings)];
 
 void setup() {
@@ -102,9 +97,10 @@ void setup() {
   
   // EEPROM
   if (EEPROM.read(0) == 255) {
-	  EEPROM.write(0, 5);    // brightness
-	  EEPROM.write(1, 110);  // contrast
-	  EEPROM.write(2, 50);   // Humidity	  
+	  EEPROM.write(0, 5);      // brightness
+	  EEPROM.write(1, 110);    // contrast
+	  EEPROM.write(2, 50);     // Humidity
+	  EEPROM.write(3, false);  // light
   }
   
   // populate the array of settings from EEPROM
@@ -114,7 +110,15 @@ void setup() {
   
   // brightness settings
   pinMode(bri, OUTPUT); //Set pin 10 to OUTPUT
-  analogWrite(bri, 0); // as a default the light is OFF
+  if (eepromSettings[3] == true) {
+	analogWrite(bri, eepromSettings[0]);
+	light = true;
+  }
+  else{
+    analogWrite(bri, 0); // light is OFF
+	light = false;
+  }
+  
   
   // contrast settings
   pinMode(contrast, OUTPUT); //Set pin 10 to OUTPUT
@@ -247,21 +251,35 @@ void chooseFromSettings() {
   if (modeSettings == true) {
 		
 		// change settings
-		if (currentSetting == settings[0]) {
-			currentSetting = settings[1];
+		if (currentSetting == settings[0]) {  // if we were on the first setting 
+			currentSetting = settings[1];     // then jump to the next one.
 			lcd.print(currentSetting);
-			lcd.setCursor(0,1);
 			storedSettings = eepromSettings[1];
+			lcd.setCursor(0,1);
 			lcd.print(storedSettings);
 		}
 		else if (currentSetting == settings[1]) {
 			currentSetting = settings[2];
 			lcd.print(currentSetting);
-			lcd.setCursor(0,1);
 			storedSettings = eepromSettings[2];
+			lcd.setCursor(0,1);
 			lcd.print(storedSettings);
 		}
 		else if (currentSetting == settings[2]) {
+			currentSetting = settings[3];
+			lcd.print(currentSetting);
+			storedSettings = eepromSettings[3];
+			lcd.setCursor(0,1);
+			// TODO
+			if (storedSettings == true) {
+				lcd.print("ON");
+			}
+			else if (storedSettings == false) {
+				lcd.print("OFF");
+			}
+			
+		}
+		else if (currentSetting == settings[3]) {
 			
 			// it was the last option, so we are living settings mode and need to UPDATE EEPROM
 			// the setting will be written to the EEPROM if they differs from previous.
@@ -335,6 +353,9 @@ void adjustSettings() {
 		else if (currentSetting == settings[2]) {
 		    writeSettings(2,1,true);
 		}
+		else if (currentSetting == settings[3]) {
+		    writeSettings(3,1,false);
+		}
         
       }
     }
@@ -378,6 +399,9 @@ void adjustSettings() {
 		else if (currentSetting == settings[2]) {
 		    writeSettings(2,1,false);
 		}
+		else if (currentSetting == settings[3]) {
+		    writeSettings(3,1,false);
+		}
         
       }
     }
@@ -394,7 +418,7 @@ void adjustSettings() {
 void writeSettings(byte addr, byte i, bool inc){
   lcd.clear();
   lcd.print(currentSetting);   // setting name
-  lcd.setCursor(0, 1);         // column, row
+
 			
   // button UP (inc = true) od DOWN (inc = false) has been clicked. 
   // Increment od decrement the value of given settings.
@@ -403,6 +427,18 @@ void writeSettings(byte addr, byte i, bool inc){
 	
 	// save it in array
     eepromSettings[addr] = storedSettings;
+  }
+  else if (addr == 3 && inc == false) {
+	  // there is no incrementation
+	  // it is only true or false
+	  if (storedSettings == true) {
+		  storedSettings = false;
+	  }
+	  else{
+		  storedSettings = true;
+	  }
+	  // save it in array
+      eepromSettings[addr] = storedSettings;
   }
   else {
     storedSettings = storedSettings-i;	
@@ -420,8 +456,19 @@ void writeSettings(byte addr, byte i, bool inc){
     analogWrite(contrast, storedSettings); // from 0 up to 255
     break;
   }
-
-  lcd.print(storedSettings);
+  
+  
+  // print the value of given setting
+  lcd.setCursor(0, 1); // column, row	
+  if (storedSettings == true && addr == 3) {
+    lcd.print("ON");
+  }
+  else if (storedSettings == false && addr == 3) {
+    lcd.print("OFF");
+  }
+  else{
+	lcd.print(storedSettings);
+  }
 }
 
 /* get data from DHT sensor and print them on lcd */
