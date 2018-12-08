@@ -77,13 +77,13 @@ char* settings[]={
   "Brightness", "Contrast", "Humidity"
 };
 
+
 // An array of settings. 
 // At the beginning the array is empty, but will be populated when user got into the SETTINGS MODE
-// When user will do any setting then the program will build this array in order to to update EEPROM
+// When user will do any setting then the program will populate this array in order to to update EEPROM
 // EEPROM will be updated only once, at the moment where user will leave the settings mode.
 // This method will save the number of write/erase EEPROM cycles which are limited to 100 000
 unsigned int eepromSettings[sizeof(settings)];
-
 
 void setup() {
   // set up the LCD's number of columns and rows:
@@ -105,6 +105,11 @@ void setup() {
 	  EEPROM.write(0, 5);    // brightness
 	  EEPROM.write(1, 110);  // contrast
 	  EEPROM.write(2, 50);   // Humidity	  
+  }
+  
+  // populate the array of settings from EEPROM
+  for (int i = 0; i<sizeof(settings); i++){
+	eepromSettings[i] = EEPROM.read(i);
   }
   
   // brightness settings
@@ -173,7 +178,7 @@ void updateLight(){
         // turn the light ON or OFF
         if (light == false) {
           // turn the light ON
-          analogWrite(bri, EEPROM.read(0)); // from 0 up to 255
+          analogWrite(bri, eepromSettings[0]); // from 0 up to 255
           light = true;
         }
         else {
@@ -257,25 +262,38 @@ void chooseFromSettings() {
 			lcd.print(storedSettings);
 		}
 		else if (currentSetting == settings[2]) {
-			// it was the last option, so we are living settings mode and save to EEPROM the new settings
-			saveToEeprom();  // write new settings to the EEPROM if they differs from previous.
+			
+			// it was the last option, so we are living settings mode and need to UPDATE EEPROM
+			// the setting will be written to the EEPROM if they differs from previous.
+			for (int i = 0; i < sizeof(settings); i++) {
+				// By updating EEPROM we write it only if the value differs from the one already saved at the same address. 
+				EEPROM.update(i,eepromSettings[i]);
+			}
+			
+			// we are exiting the settings mode
 			modeSettings = false;
 			currentSetting = "";
+			lcd.clear();
+			lcd.print("Saving");
+			lcd.setCursor(0,1);
+			lcd.print("settings...");
 		}
 
   }
-  // mode settins is no active yet, but the button 'settings' has just been presssed
-  // that means we shoud turn ON the settings mode and at the same time give the first setting from the array of settings 
+  // currentSetting is empty string. It means the mode settins is no active yet
+  // the the button 'settings' has just been presssed
+  // turn ON the settings mode and give the first setting from the array of settings 
   else {
 	modeSettings = true;           // turn ON the settings mode
 	currentSetting = settings[0];  // give the first setting from array of settings to configure.
 	lcd.clear();
 	lcd.print(currentSetting);
 	
+	// TODO -> try to define it earlier in the code.
 	// define eepromSettings
-	for (int i = 0; i<3; i++){
-		eepromSettings[i] = EEPROM.read(i);
-	}
+	//for (int i = 0; i<sizeof(settings); i++){
+	//	eepromSettings[i] = EEPROM.read(i);
+  //}
 			
 	storedSettings = eepromSettings[0]; // read the first setting value
 	lcd.setCursor(0,1);
@@ -387,14 +405,12 @@ void writeSettings(byte addr, byte i, bool inc){
   // Increment od decrement the value of given settings.
   if (inc == true) {
     storedSettings = storedSettings+i;
-    //EEPROM.update(addr,storedSettings);
 	
 	// save it in array
     eepromSettings[addr] = storedSettings;
   }
   else {
-    storedSettings = storedSettings-i;
-    //EEPROM.update(addr,storedSettings);	
+    storedSettings = storedSettings-i;	
 	
     // save it in array
     eepromSettings[addr] = storedSettings;
@@ -413,23 +429,14 @@ void writeSettings(byte addr, byte i, bool inc){
   lcd.print(storedSettings);
 }
 
-/* Update settings saved in EEPROM */
-void saveToEeprom() {	
-  for (int i = 0; i < sizeof(settings); i++) {
-    // By updating EEPROM we write it only if the value differs from the one already saved at the same address. 
-    EEPROM.update(i,eepromSettings[i]);
-  }
-}
-
 /* get data from DHT sensor and print them on lcd */
 void getDhtSensorData() {
 
   float h = dht.readHumidity();     // humadity
   float t = dht.readTemperature();  // temperature as Celsius  
   
-  // TODO
-  // find another way to update
-  lcd.setCursor(0, 0);
+  // clear lcd
+  lcd.clear();
 
   // Check if any reads failed and exit early (to try again).
   if (isnan(h) || isnan(t)) {
@@ -450,7 +457,7 @@ void getDhtSensorData() {
   
   // print the fan state.
   lcd.setCursor(0,1);
-  if (h > EEPROM.read(2)) {
+  if (h > eepromSettings[2]) {
     lcd.print("Fan is ON       ");
     digitalWrite(relayFan, LOW);
   }
