@@ -59,9 +59,12 @@ LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 DHT dht(DHTPIN, DHTTYPE); // Initialize DHT sensor.
 
 bool light = false;                        // light is OFF (false) or ON (true)
-unsigned int counter = 0;                  // simulate millis() and is easy to reset
+bool lockFan = false;                      // lock the fan (prevent turning on and off many times)
+long lockStart;                            // counter for the fan lock
+unsigned int counter = 0;                  // main loop counter
 bool modeDHT = true;                       // default mode
-bool modeSettings = false;
+bool modeSettings = false;                 // if we are in setting mode or not
+String currentSetting = "";                // what setting we are in at the moment.
 const unsigned int dhtDataInterval = 5000; // number of millisecs between reading DHT data
 byte previousButtonState = LOW;            // the previous button state as a default has to be LOW because of the pull-down resistor
 byte previousButtonStateSettings = LOW;    // the previous button state as a default has to be LOW because of the pull-down resistor
@@ -70,11 +73,10 @@ byte previousButtonStateAdjustDown = LOW;  // the previous button state as a def
 byte storedSettings;                       // stored settings in EEPROM
 unsigned long debounceTime = 50;           // milliseconds
 unsigned long buttonPressTime;             // when the switch last changed state
-String currentSetting = "";
 
 // an array of settings names
 char* settings[]={
-  "Brightness", "Contrast", "Humidity", "Default light"
+  "Brightness", "Contrast", "Humidity", "Default light", "Fan lock"
 };
 
 // An array of settings saved in eeprom.
@@ -101,6 +103,7 @@ void setup() {
 	  EEPROM.write(1, 110);    // contrast
 	  EEPROM.write(2, 50);     // Humidity
 	  EEPROM.write(3, false);  // light
+	  EEPROM.write(4, 1);      // time to lock the fan
   }
   
   // populate the array of settings from EEPROM
@@ -201,10 +204,8 @@ void updateLight(){
   }
 }
 
-/*
-  
-  Put the program in settings mode
-*/
+
+//  Put the program in settings mode
 void updateSettings(){
   
   // see if the switch is open or closed
@@ -280,6 +281,14 @@ void chooseFromSettings() {
 			
 		}
 		else if (currentSetting == settings[3]) {
+			currentSetting = settings[4];
+			lcd.print(currentSetting);
+			storedSettings = eepromSettings[4];
+			lcd.setCursor(0,1);
+			lcd.print((String)storedSettings+" min");
+		}
+		
+		else if (currentSetting == settings[4]) {
 			
 			// it was the last option, so we are living settings mode and need to UPDATE EEPROM
 			// the setting will be written to the EEPROM if they differs from previous.
@@ -310,15 +319,14 @@ void chooseFromSettings() {
 	lcd.print(currentSetting);		
 	storedSettings = eepromSettings[0]; // read the first setting value
 	lcd.setCursor(0,1);
-    lcd.print(storedSettings);			
-
+    lcd.print(storedSettings);
   }
 }
 
 /*
-  Button Up or Down
-  adjusting chosen settings up or down
-  If the button will be pressed continually it increment the values every half a second.
+  Button Up or Down has been pressed.
+  Adjusting chosen settings UP or DOWN
+  If the button will be pressed without releasing it then do the incrementation on every half a second.
 */
 void adjustSettings() {
 	
@@ -355,6 +363,9 @@ void adjustSettings() {
 		}
 		else if (currentSetting == settings[3]) {
 		    writeSettings(3,1,false);
+		}
+		else if (currentSetting == settings[4]) {
+		    writeSettings(4,1,true);
 		}
         
       }
@@ -402,7 +413,9 @@ void adjustSettings() {
 		else if (currentSetting == settings[3]) {
 		    writeSettings(3,1,false);
 		}
-        
+		else if (currentSetting == settings[4]) {
+		    writeSettings(4,1,false);
+		}       
       }
     }
     else if (previousButtonStateAdjustUp != buttonState) {
@@ -415,13 +428,18 @@ void adjustSettings() {
 	
 }
 
+/* Button UP or DOWN has been clicked.
+   Increment od decrement the value of given settings. 
+ */
 void writeSettings(byte addr, byte i, bool inc){
+
   lcd.clear();
   lcd.print(currentSetting);   // setting name
 
-			
-  // button UP (inc = true) od DOWN (inc = false) has been clicked. 
+
   // Increment od decrement the value of given settings.
+  //inc = true for button UP 
+  //inc = false for button DOWN
   if (inc == true) {
     storedSettings = storedSettings+i;
 	
@@ -449,11 +467,11 @@ void writeSettings(byte addr, byte i, bool inc){
   
     // set the light and contrast immediately
   switch (addr) {
-	  case 0:
-    analogWrite(bri, storedSettings); // from 0 up to 255
+	case 0:
+      analogWrite(bri, storedSettings); // from 0 up to 255
     break;
-  case 1:
-    analogWrite(contrast, storedSettings); // from 0 up to 255
+    case 1:
+      analogWrite(contrast, storedSettings); // from 0 up to 255
     break;
   }
   
@@ -466,16 +484,19 @@ void writeSettings(byte addr, byte i, bool inc){
   else if (storedSettings == false && addr == 3) {
     lcd.print("OFF");
   }
+  else if (addr == 4) {
+	lcd.print((String)eepromSettings[4]+" min");
+  }
   else{
 	lcd.print(storedSettings);
   }
 }
 
-/* get data from DHT sensor and print them on lcd */
+// get data from DHT sensor and print them on lcd
 void getDhtSensorData() {
 
   float h = dht.readHumidity();     // humadity
-  float t = dht.readTemperature();  // temperature as Celsius  
+  float t = dht.readTemperature();  // temperature as Celsius
   
   // clear lcd
   lcd.clear();
@@ -487,23 +508,28 @@ void getDhtSensorData() {
   }
   
   // print temperature
-  String temperatura = "";
-  temperatura = temperatura+t+(char)223+"C";
-  lcd.print(temperatura);
+  lcd.print((String)t+(char)223+"C");
   
   // print humidity
-  lcd.setCursor(8, 0); // column, row
-  String wilgoc = "  H: ";
-  wilgoc = wilgoc+round(h)+"%";
-  lcd.print(wilgoc);
+  lcd.setCursor(10, 0); // column, row
+  lcd.print("H: "+String(round(h))+"%");
   
-  // print the fan state.
+  // set the fan lock ON or OFF (true or false)
+  if (h > eepromSettings[2] && lockFan == false && eepromSettings[4] != 0) {
+    lockFan = true;
+	lockStart = millis();
+  }
+  else if (h < eepromSettings[2] && lockFan == true && millis()-lockStart > eepromSettings[4]*60000){
+    lockFan = false;
+  }
+ 
+  // turn the fan On or OFF and print the state of fan
   lcd.setCursor(0,1);
-  if (h > eepromSettings[2]) {
-    lcd.print("Fan is ON       ");
+  if (lockFan == true){
+  lcd.print(millis()-lockStart);
     digitalWrite(relayFan, LOW);
   }
-  else {  
+  else {
     lcd.print("Fan is OFF      ");
     digitalWrite(relayFan, HIGH);
   }
